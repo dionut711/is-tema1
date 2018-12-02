@@ -109,6 +109,32 @@ unsigned char* padKey(unsigned char* key, unsigned char character, int length)
     return new_key;
 }
 
+unsigned char** splitLines(unsigned char* text, int* lines_count)
+{
+    int text_length = strlen((char*)text);
+
+    *lines_count = 0;
+    for (int i = 0; i < text_length; i++)
+        if (text[i] == '\n')
+            *lines_count += 1;
+
+    unsigned char** lines = (unsigned char**)malloc(sizeof(unsigned char*) * *lines_count);
+
+    unsigned char* line = text;
+    int current_line_index = 0;
+
+    for (int i = 0; i < text_length; i++) {
+        if (text[i] == '\n') {
+            text[i] = 0;
+            lines[current_line_index] = line;
+            current_line_index += 1;
+            line = text + i + 1;
+        }
+    }
+
+    return lines;
+}
+
 int main (void)
 {
     unsigned char *key = (unsigned char *)"01234567890123456789012345678901";
@@ -123,6 +149,15 @@ int main (void)
     char buffer[256];
     int length = read(fd, buffer, sizeof(buffer));
     close(fd);
+
+    char text[] = "10th\n1st\n";
+
+    int lines_count;
+    unsigned char** lines  = splitLines((unsigned char*)text, &lines_count);
+
+    for (int i = 0; i < lines_count; i++) {
+        printf("%d:\n%s\n", i, lines[i]);
+    }
 
     return 0;
 }
