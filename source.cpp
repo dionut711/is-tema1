@@ -19,8 +19,7 @@ void printError(const char * message)
     abort();
 }
 
-int encrypt(unsigned char *plaintext, int plaintext_len, const EVP_CIPHER* (*cipher)(), unsigned char *key,
-  unsigned char *iv, unsigned char *ciphertext)
+int encrypt(unsigned char *plaintext, int plaintext_len, const EVP_CIPHER* (*cipher)(), unsigned char *key, unsigned char *iv, unsigned char *ciphertext)
 {
     EVP_CIPHER_CTX *ctx;
 
@@ -46,8 +45,7 @@ int encrypt(unsigned char *plaintext, int plaintext_len, const EVP_CIPHER* (*cip
     return ciphertext_length;
 }
 
-int decrypt(unsigned char *ciphertext, int ciphertext_len, const EVP_CIPHER* (*cipher)(), unsigned char *key,
-  unsigned char *iv, unsigned char *plaintext)
+int decrypt(unsigned char *ciphertext, int ciphertext_len, const EVP_CIPHER* (*cipher)(), unsigned char *key, unsigned char *iv, unsigned char *plaintext)
 {
     EVP_CIPHER_CTX *ctx;
 
@@ -139,7 +137,7 @@ int main (void)
 {
     unsigned char *key = (unsigned char *)"01234567890123456789012345678901";
     unsigned char *iv = (unsigned char *)"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x0f";
-    const EVP_CIPHER* (*cipher)() = EVP_aes_256_ecb;
+    const EVP_CIPHER* (*cipher)() = EVP_aes_128_ecb;
 
     unsigned char *plaintext = (unsigned char *)"The quick brown fox jumps over the lazy dog";
 
@@ -158,11 +156,26 @@ int main (void)
     int lines_count;
     unsigned char** lines  = splitLines((unsigned char*)dictionary, &lines_count);
 
-    printf("words:%d\n", lines_count);
-    for (int i = 0; i < 10; i++) {
-        printf("%d:\n%s\n", i, lines[i]);
+    //encrypt_decrypt(plaintext, cipher, padKey(lines[0], '\x20', 17), iv);
+
+    unsigned char ciphertext[256];
+    unsigned char deciphertext[256];
+    key = padKey(lines[1], '\x20', 17);
+
+    encrypt(plaintext, strlen((char*)plaintext), cipher, key, iv, ciphertext);
+    //int dechipertext_length = decrypt(ciphertext, strlen((char*)ciphertext), cipher, key, iv, deciphertext);
+    //deciphertext[dechipertext_length] = 0;
+
+    for (int i = 0; i < lines_count; i++) {
+        unsigned char* current_key = padKey(lines[i], '\x20', 17);
+        int dechipertext_length = decrypt(ciphertext, strlen((char*)ciphertext), cipher, current_key, iv, deciphertext);
+        deciphertext[dechipertext_length] = 0;
+
+        int same = !strcmp((char*)plaintext, (char*)deciphertext);
+        printf("key[%s]: %d\n", current_key, same);
+        if (same) break;
     }
-    printf("last:\n%s\n", lines[lines_count - 1]);
+    //printf("cmp:%d\n", strcmp((char*)plaintext, (char*)deciphertext));
 
     return 0;
 }
