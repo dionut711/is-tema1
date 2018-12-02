@@ -144,20 +144,25 @@ int main (void)
     unsigned char *plaintext = (unsigned char *)"The quick brown fox jumps over the lazy dog";
 
     //encrypt_decrypt(plaintext, cipher, key, iv);
-    char pad[] = "avadsfadsfasddf";
-    int fd = open("plaintext.txt", O_RDONLY);
-    char buffer[256];
-    int length = read(fd, buffer, sizeof(buffer));
-    close(fd);
+//    char pad[] = "avadsfadsfasddf";
+//    int fd = open("plaintext.txt", O_RDONLY);
+//    char buffer[256];
+//    int length = read(fd, buffer, sizeof(buffer));
+//    close(fd);
 
-    char text[] = "10th\n1st\n";
+    char dictionary[1024 * 1024];
+    int fd = open("word_dict.txt", O_RDONLY);
+    int dictionary_length = read(fd, dictionary, sizeof(dictionary));
+    dictionary[dictionary_length] = 0;
 
     int lines_count;
-    unsigned char** lines  = splitLines((unsigned char*)text, &lines_count);
+    unsigned char** lines  = splitLines((unsigned char*)dictionary, &lines_count);
 
-    for (int i = 0; i < lines_count; i++) {
+    printf("words:%d\n", lines_count);
+    for (int i = 0; i < 10; i++) {
         printf("%d:\n%s\n", i, lines[i]);
     }
+    printf("last:\n%s\n", lines[lines_count - 1]);
 
     return 0;
 }
