@@ -4,6 +4,8 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <time.h>
 
 const char * ERROR_MESSAGE_CTX = "Creating context failed.";
 const char * ERROR_MESSAGE_ENCRYPT_INIT = "EncryptInit failed.";
@@ -13,10 +15,14 @@ const char * ERROR_MESSAGE_DECRYPT_INIT = "DecryptInit failed.";
 const char * ERROR_MESSAGE_DECRYPT_UPDATE = "DecryptUpdate failed.";
 const char * ERROR_MESSAGE_DECRYPT_FINAL = "DecryptFinal failed.";
 
-void printError(const char * message)
+const int TEXT_SIZE = 256;
+const int DICTIONARY_SIZE = 1024 * 1024;
+const char * CIPHERTEXT_PATH = "ciphertext.txt";
+
+void printError(const char * message, bool exit = true)
 {
     printf("ERROR: %s\n", message);
-    abort();
+    if(exit) abort();
 }
 
 int encrypt(unsigned char *plaintext, int plaintext_len, const EVP_CIPHER* (*cipher)(), unsigned char *key, unsigned char *iv, unsigned char *ciphertext)
@@ -62,35 +68,13 @@ int decrypt(unsigned char *ciphertext, int ciphertext_len, const EVP_CIPHER* (*c
         printError(ERROR_MESSAGE_DECRYPT_UPDATE);
     plaintext_length = output_length;
 
-    if(1 != EVP_DecryptFinal_ex(ctx, plaintext + output_length, &output_length))
-        printError(ERROR_MESSAGE_DECRYPT_FINAL);
+    if(1 != EVP_DecryptFinal_ex(ctx, plaintext + output_length, &output_length));
+        //printError(ERROR_MESSAGE_DECRYPT_FINAL, false);
     plaintext_length += output_length;
 
     EVP_CIPHER_CTX_free(ctx);
 
     return plaintext_length;
-}
-
-void encrypt_decrypt(unsigned char* plaintext, const EVP_CIPHER * (*cipher)(), unsigned char* key, unsigned char* iv)
-{
-    unsigned char ciphertext[128];
-    unsigned char decryptedtext[128];
-
-    int decryptedtext_len, ciphertext_len;
-
-    ciphertext_len = encrypt (plaintext, strlen ((char *)plaintext), cipher, key, iv, ciphertext);
-
-
-    printf("Ciphertext is:\n");
-    BIO_dump_fp (stdout, (const char *)ciphertext, ciphertext_len);
-
-
-    decryptedtext_len = decrypt(ciphertext, ciphertext_len, cipher, key, iv, decryptedtext);
-    decryptedtext[decryptedtext_len] = '\0';
-
-
-    printf("Decrypted text is:\n");
-    printf("%s\n", decryptedtext);
 }
 
 unsigned char* padKey(unsigned char* key, unsigned char character, int length)
@@ -133,49 +117,106 @@ unsigned char** splitLines(unsigned char* text, int* lines_count)
     return lines;
 }
 
-int main (void)
-{
-    unsigned char *key = (unsigned char *)"01234567890123456789012345678901";
-    unsigned char *iv = (unsigned char *)"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x0f";
-    const EVP_CIPHER* (*cipher)() = EVP_aes_128_ecb;
+unsigned char* findKey(unsigned char* plaintext, unsigned char* ciphertext, const EVP_CIPHER* (*cipher)(), unsigned char* iv, unsigned char** words, int words_count) {
 
-    unsigned char *plaintext = (unsigned char *)"The quick brown fox jumps over the lazy dog";
+    unsigned char* deciphertext = (unsigned char*)malloc(sizeof(unsigned char) * TEXT_SIZE);
 
-    //encrypt_decrypt(plaintext, cipher, key, iv);
-//    char pad[] = "avadsfadsfasddf";
-//    int fd = open("plaintext.txt", O_RDONLY);
-//    char buffer[256];
-//    int length = read(fd, buffer, sizeof(buffer));
-//    close(fd);
-
-    char dictionary[1024 * 1024];
-    int fd = open("word_dict.txt", O_RDONLY);
-    int dictionary_length = read(fd, dictionary, sizeof(dictionary));
-    dictionary[dictionary_length] = 0;
-
-    int lines_count;
-    unsigned char** lines  = splitLines((unsigned char*)dictionary, &lines_count);
-
-    //encrypt_decrypt(plaintext, cipher, padKey(lines[0], '\x20', 17), iv);
-
-    unsigned char ciphertext[256];
-    unsigned char deciphertext[256];
-    key = padKey(lines[1], '\x20', 17);
-
-    encrypt(plaintext, strlen((char*)plaintext), cipher, key, iv, ciphertext);
-    //int dechipertext_length = decrypt(ciphertext, strlen((char*)ciphertext), cipher, key, iv, deciphertext);
-    //deciphertext[dechipertext_length] = 0;
-
-    for (int i = 0; i < lines_count; i++) {
-        unsigned char* current_key = padKey(lines[i], '\x20', 17);
+    for (int i = 0; i < words_count; i++) {
+        unsigned char* current_key = padKey(words[i], '\x20', 17);
         int dechipertext_length = decrypt(ciphertext, strlen((char*)ciphertext), cipher, current_key, iv, deciphertext);
         deciphertext[dechipertext_length] = 0;
 
         int same = !strcmp((char*)plaintext, (char*)deciphertext);
-        printf("key[%s]: %d\n", current_key, same);
-        if (same) break;
+
+        if (same) {
+            printf("key found:\n%s\n\n", current_key);
+            printf("attempts:\n%d\n\n", i);
+            printf("plaintext:\n%s\n\n", plaintext);
+            return current_key;
+        }
+        free (current_key);
     }
-    //printf("cmp:%d\n", strcmp((char*)plaintext, (char*)deciphertext));
+
+    return nullptr;
+}
+
+int main (int argc, char* argv[])
+{
+    // Read dictionary from file
+    char dictionary[DICTIONARY_SIZE];
+    int fd_dict = open("word_dict.txt", O_RDONLY);
+    int dictionary_length = read(fd_dict, dictionary, sizeof(dictionary));
+    dictionary[dictionary_length] = 0;
+    close(fd_dict);
+
+    // Create words array from dictionary
+    int words_count;
+    unsigned char** words  = splitLines((unsigned char*)dictionary, &words_count);
+
+
+
+    unsigned char *iv = (unsigned char *)"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f";
+    unsigned char* key;
+    const EVP_CIPHER* (*cipher)();
+    char* textpath;
+
+
+    // Argument parsing
+    if(argc > 1) {
+        if (!strcmp(argv[1], "ecb"))
+            cipher = EVP_aes_128_ecb;
+        else if (!strcmp(argv[1], "obf"))
+            cipher = EVP_aes_128_ofb;
+        else {
+            printf("Invalid mode, please choose 'ecb' or 'obf'.\n");
+            return 0;
+        }
+
+        printf("mode: %s\n", argv[1]);
+
+        if(argc > 2) {
+            textpath = argv[2];
+
+            if (argc > 3) {
+                key = padKey((unsigned char*)argv[3], '\x20', 17);
+            } else {
+                srand(time(NULL));
+                key = padKey((unsigned char*)words[rand() % words_count], '\x20', 17);
+
+            }
+            printf("key: %s\n\n", key);
+        } else {
+            printf("Please specifiy a path to the plaintext file.\n");
+            return 0;
+        }
+    }
+    else {
+        printf("No parameters were given.\n");
+        return 0;
+    }
+
+    // Read plaintext from file
+    unsigned char plaintext[TEXT_SIZE];
+    int fd_plain = open(textpath, O_RDONLY);
+    int length = read(fd_plain, plaintext, sizeof(plaintext));
+    plaintext[length] = 0;
+    close(fd_plain);
+
+    // Encyrpt plaintext
+    unsigned char ciphertext[TEXT_SIZE];
+    int ciphertext_length = encrypt(plaintext, strlen((char*)plaintext), cipher, key, iv, ciphertext);
+    printf("ciphertext:\n%s\n\n", ciphertext);
+
+    // Write encrypted text to file
+    int fd_cipher = open(CIPHERTEXT_PATH, O_WRONLY | O_CREAT);
+    write(fd_cipher, ciphertext, ciphertext_length);
+    close(fd_cipher);
+
+
+    unsigned char* key_found = findKey(plaintext, ciphertext, cipher, iv, words, words_count);
+    if(!key_found) {
+        printf("No key found.\n");
+    }
 
     return 0;
 }
